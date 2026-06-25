@@ -149,21 +149,32 @@ function handleEvent(ws, socketId, event, data) {
                 emit(ws, 'connect-result', { success: false, error: 'Dispositivo não encontrado.' });
                 return;
             }
-            if (target.password !== password) {
-                emit(ws, 'connect-result', { success: false, error: 'Senha incorreta.' });
-                return;
-            }
 
             const sessionId = crypto.randomUUID();
             sessions.set(sessionId, { hostSocketId: target.socketId, viewerSocketId: socketId, sessionId });
 
-            // Notifica o HOST que tem alguém querendo conectar
+            // Modo não supervisionado: senha fornecida e correta → aceita direto
+            if (password && target.password && password === target.password) {
+                emit(viewerInfo?.ws ?? ws, 'connection-accepted', { sessionId });
+                emit(target.ws, 'connection-request-unattended', { sessionId, viewerSocketId: socketId });
+                console.log(`[✓] Conexão não supervisionada: ${sessionId}`);
+                return;
+            }
+
+            // Senha errada fornecida → rejeita
+            if (password && target.password && password !== target.password) {
+                sessions.delete(sessionId);
+                emit(ws, 'connect-result', { success: false, error: 'Senha incorreta.' });
+                return;
+            }
+
+            // Modo supervisionado: sem senha → mostra popup de aceite no host
             emit(target.ws, 'connection-request', {
                 sessionId,
                 viewerSocketId: socketId,
                 viewerAlias: alias || 'Operador'
             });
-            console.log(`[>] Solicitação de conexão: ${sessionId}`);
+            console.log(`[>] Solicitação supervisionada: ${sessionId}`);
             break;
         }
 
